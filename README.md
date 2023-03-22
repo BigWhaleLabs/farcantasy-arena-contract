@@ -1,10 +1,8 @@
-# Solidity Ethereum smart contract starter
-
-Heavily influenced by the [Big Whale Labs repos](https://github.com/BigWhaleLabs).
+# Farcantasy arena smart contract
 
 ## Usage
 
-1. Clone the repository with `git clone git@github.com:Borodutch/smart-contract-starter`
+1. Clone the repository with `git clone git@github.com:BigWhaleLabs/farcantasy-arena-contract`
 2. Install the dependencies with `yarn`
 3. Add environment variables to your `.env` file
 4. Run the scripts below
@@ -28,4 +26,4 @@ Also check out the `.env.sample` file for more information.
 - `yarn eth-lint` — runs the linter for the solidity contract
 - `yarn lint` — runs all the linters
 - `yarn prettify` — prettifies the code in th project
-- `yarn release` — relases the `typechain` directory to NPM
+- `yarn release` — releases the `typechain` directory to NPM
