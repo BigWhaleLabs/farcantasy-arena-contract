@@ -10,6 +10,7 @@
     ],
     "no-empty-blocks": "off",
     "reason-string": "off",
-    "no-global-import": "off"
+    "no-global-import": "off",
+    "not-rely-on-time": "off"
   }
 }

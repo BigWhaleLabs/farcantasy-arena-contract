@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 struct BattleLobby {
+  uint256 lastActivityTimestamp;
   address owner;
   address participant;
   uint256[10] ownerCards;

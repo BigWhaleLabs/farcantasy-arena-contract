@@ -51,6 +51,7 @@ contract Arena is Ownable {
     uint256[5] unusedCardIds
   );
   event BattleExecuted(uint256 indexed lobbyId, uint8[3] winners);
+  event BattleCancelledDueToTimeout(uint256 indexed lobbyId);
 
   constructor(
     address _farcantasyContract,
@@ -88,6 +89,7 @@ contract Arena is Ownable {
     }
     // Create a new battle lobby
     BattleLobby memory newLobby = BattleLobby({
+      lastActivityTimestamp: block.timestamp,
       owner: msg.sender,
       participant: address(0),
       ownerCards: cardIds,
@@ -167,6 +169,8 @@ contract Arena is Ownable {
     lobby.participantCards = cardIds;
     // Emit event
     emit BattleLobbyJoined(lobbyId, msg.sender, cardIds);
+    // Update last activity timestamp
+    _updateLastActivityTimestamp(lobbyId);
   }
 
   /**
@@ -276,6 +280,8 @@ contract Arena is Ownable {
 
     // Emit event
     emit CardSelectionProofSubmitted(lobbyId, msg.sender, input[0]);
+    // Update last activity timestamp
+    _updateLastActivityTimestamp(lobbyId);
   }
 
   /**
@@ -373,6 +379,9 @@ contract Arena is Ownable {
 
     // Emit event for unused cards
     emit UnusedCardsReturned(lobbyId, msg.sender, unusedCardIds);
+
+    // Update last activity timestamp
+    _updateLastActivityTimestamp(lobbyId);
   }
 
   /**
@@ -576,5 +585,67 @@ contract Arena is Ownable {
     for (uint256 i = 0; i < cardIds.length; i++) {
       farcantasyContract.safeTransferFrom(address(this), owner(), cardIds[i]);
     }
+  }
+
+  /**
+   * Timeout functions
+   */
+
+  function _updateLastActivityTimestamp(uint256 lobbyId) private {
+    require(
+      battleLobbies[lobbyId].owner != address(0),
+      "The specified battle lobby does not exist."
+    );
+    battleLobbies[lobbyId].lastActivityTimestamp = block.timestamp;
+  }
+
+  function hasTimedOut(uint256 lobbyId) public view returns (bool) {
+    uint256 timeoutDuration = 2 days;
+    return
+      block.timestamp >
+      battleLobbies[lobbyId].lastActivityTimestamp + timeoutDuration;
+  }
+
+  function cancelDueToTimeout(uint256 lobbyId) external {
+    BattleLobby storage lobby = battleLobbies[lobbyId];
+    // Check requirements
+    require(
+      lobby.owner != address(0),
+      "The specified battle lobby does not exist."
+    );
+    require(
+      msg.sender == lobby.owner ||
+        msg.sender == lobby.participant ||
+        msg.sender == owner(),
+      "Only the owner, the participant or the contract owner can cancel the battle lobby."
+    );
+    require(!lobby.battleExecuted, "The battle has already been executed.");
+    require(hasTimedOut(lobbyId), "The battle lobby has not timed out yet.");
+    // Return all cards to the owner if contract still holds them
+    for (uint256 i = 0; i < lobby.ownerCards.length; i++) {
+      if (farcantasyContract.ownerOf(lobby.ownerCards[i]) == address(this)) {
+        farcantasyContract.safeTransferFrom(
+          address(this),
+          lobby.owner,
+          lobby.ownerCards[i]
+        );
+      }
+    }
+    // Return all cards to the participant if contract still holds them
+    for (uint256 i = 0; i < lobby.participantCards.length; i++) {
+      if (
+        farcantasyContract.ownerOf(lobby.participantCards[i]) == address(this)
+      ) {
+        farcantasyContract.safeTransferFrom(
+          address(this),
+          lobby.participant,
+          lobby.participantCards[i]
+        );
+      }
+    }
+    // Emit event
+    emit BattleCancelledDueToTimeout(lobbyId);
+    // Delete the lobby for gas refund
+    delete battleLobbies[lobbyId];
   }
 }
