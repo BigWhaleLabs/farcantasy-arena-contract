@@ -78,5 +78,8 @@
     "typechain": "^8.1.1",
     "typescript": "^5.0.2"
   },
-  "packageManager": "yarn@3.5.0"
+  "packageManager": "yarn@3.5.0",
+  "dependencies": {
+    "@big-whale-labs/versioned-contract": "^1.0.2"
+  }
 }

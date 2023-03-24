@@ -173,6 +173,25 @@ contract Arena is Ownable {
     _updateLastActivityTimestamp(lobbyId);
   }
 
+  function _transferCardsToOwner(
+    uint256[10] memory cards,
+    address owner
+  ) private {
+    for (uint256 i = 0; i < cards.length; i++) {
+      if (farcantasyContract.ownerOf(cards[i]) != address(this)) {
+        continue;
+      }
+      farcantasyContract.safeTransferFrom(address(this), owner, cards[i]);
+    }
+  }
+
+  function _returnAllCards(BattleLobby memory lobby) private {
+    // Return all cards to the owner if contract still holds them
+    _transferCardsToOwner(lobby.ownerCards, lobby.owner);
+    // Return all cards to the participant if contract still holds them
+    _transferCardsToOwner(lobby.participantCards, lobby.participant);
+  }
+
   /**
    * Step 2.5: Optional back off for owner
    */
@@ -189,28 +208,8 @@ contract Arena is Ownable {
       lobby.ownerCardSelection == 0,
       "The owner has already submitted a card selection."
     );
-    // Return all cards to the owner if contract still holds them
-    for (uint256 i = 0; i < lobby.ownerCards.length; i++) {
-      if (farcantasyContract.ownerOf(lobby.ownerCards[i]) == address(this)) {
-        farcantasyContract.safeTransferFrom(
-          address(this),
-          lobby.owner,
-          lobby.ownerCards[i]
-        );
-      }
-    }
-    // Return all cards to the participant if contract still holds them
-    for (uint256 i = 0; i < lobby.participantCards.length; i++) {
-      if (
-        farcantasyContract.ownerOf(lobby.participantCards[i]) == address(this)
-      ) {
-        farcantasyContract.safeTransferFrom(
-          address(this),
-          lobby.participant,
-          lobby.participantCards[i]
-        );
-      }
-    }
+    // Return all cards
+    _returnAllCards(lobby);
     // Delete battle lobby
     delete battleLobbies[lobbyId];
     // Emit event
@@ -453,10 +452,7 @@ contract Arena is Ownable {
     }
   }
 
-  function executeBattle(
-    uint256 lobbyId,
-    Signature[3][3][2] memory stats
-  ) external {
+  function _checkBattleRequirements(uint256 lobbyId) private view {
     BattleLobby storage lobby = battleLobbies[lobbyId];
 
     // Check conditions
@@ -474,109 +470,125 @@ contract Arena is Ownable {
       "Both battle lines must be revealed."
     );
     require(!lobby.battleExecuted, "The battle has already been executed.");
+  }
 
-    // Execute battle
-    uint8[3][3] memory ownerBattleLines = lobby.ownerBattleLines;
-    uint8[3][3] memory participantBattleLines = lobby.participantBattleLines;
+  function _calculateLineOffenceAndDefence(
+    uint8[3] memory battleLines,
+    Signature[3] memory lineStats,
+    uint256[10] memory cards
+  ) private view returns (uint16 offence, uint16 defence) {
+    for (uint8 i = 0; i < 3; i++) {
+      // If the card is not present, skip
+      if (battleLines[i] == 0) {
+        continue;
+      }
+      // Get card stats
+      (
+        uint256 cardId,
+        uint16 cardOffence,
+        uint16 cardDefence
+      ) = _extractDefenceAndOffenceStats(
+          lineStats[i].data,
+          lineStats[i].r,
+          lineStats[i].vs
+        );
+      uint8 cardIndex = battleLines[i] - 1;
+      require(
+        cardId == cards[cardIndex],
+        "The card id does not match the submitted battle line."
+      );
+      offence += cardOffence;
+      defence += cardDefence;
+    }
+  }
+
+  function _selectWinner(
+    uint16 ownerLineOffence,
+    uint16 ownerLineDefence,
+    uint16 participantLineOffence,
+    uint16 participantLineDefence
+  ) private pure returns (uint8) {
+    int16 ownerScore = int16(ownerLineDefence) - int16(participantLineOffence);
+    int16 participantScore = int16(participantLineDefence) -
+      int16(ownerLineOffence);
+    int16 scoreDifference = ownerScore - participantScore;
+
+    // 0 — No winner, 1 — Owner, 2 — Participant
+    return (scoreDifference > 0) ? 1 : ((scoreDifference < 0) ? 2 : 0);
+  }
+
+  function _calculateWinners(
+    uint256 lobbyId,
+    Signature[3][3][2] memory stats
+  ) private view returns (uint8[3] memory) {
+    BattleLobby storage lobby = battleLobbies[lobbyId];
+
     uint8[3] memory winners;
-
     Signature[3][3] memory ownerStats = stats[0];
     Signature[3][3] memory participantStats = stats[1];
-    for (uint8 i = 0; i < 3; i++) {
-      Signature[3] memory ownerLineStats = ownerStats[i];
-      Signature[3] memory participantLineStats = participantStats[i];
 
-      uint16 ownerLineOffence = 0;
-      uint16 ownerLineDefence = 0;
-      uint16 participantLineOffence = 0;
-      uint16 participantLineDefence = 0;
-      for (uint8 j = 0; j < 3; j++) {
-        // If the owner card is not present, skip
-        if (ownerBattleLines[i][j] == 0) {
-          continue;
-        }
-        // Get owner card stats
-        (
-          uint256 cardId,
-          uint16 offence,
-          uint16 defence
-        ) = _extractDefenceAndOffenceStats(
-            ownerLineStats[j].data,
-            ownerLineStats[j].r,
-            ownerLineStats[j].vs
-          );
-        uint8 cardIndex = ownerBattleLines[i][j] - 1;
-        require(
-          cardId == lobby.ownerCards[cardIndex],
-          "The card id does not match the submitted battle line."
+    for (uint8 i = 0; i < 3; i++) {
+      // Calculate owner and participant offence and defence
+      (
+        uint16 ownerLineOffence,
+        uint16 ownerLineDefence
+      ) = _calculateLineOffenceAndDefence(
+          lobby.ownerBattleLines[i],
+          ownerStats[i],
+          lobby.ownerCards
         );
-        ownerLineOffence += offence;
-        ownerLineDefence += defence;
-        // Get participant card stats
-        (cardId, offence, defence) = _extractDefenceAndOffenceStats(
-          participantLineStats[j].data,
-          participantLineStats[j].r,
-          participantLineStats[j].vs
+      (
+        uint16 participantLineOffence,
+        uint16 participantLineDefence
+      ) = _calculateLineOffenceAndDefence(
+          lobby.participantBattleLines[i],
+          participantStats[i],
+          lobby.participantCards
         );
-        cardIndex = participantBattleLines[i][j] - 1;
-        require(
-          cardId == lobby.participantCards[cardIndex],
-          "The card id does not match the submitted battle line."
-        );
-        participantLineOffence += offence;
-        participantLineDefence += defence;
-        // Select the winner
-        // 0 — No winner, 1 — Owner, 2 — Participant
-        int16 ownerScore = int16(ownerLineDefence) -
-          int16(participantLineOffence);
-        int16 participantScore = int16(participantLineDefence) -
-          int16(ownerLineOffence);
-        if (ownerScore > participantScore) {
-          winners[i] = 1;
-        } else if (ownerScore < participantScore) {
-          winners[i] = 2;
-        } else {
-          winners[i] = 0;
-        }
-      }
+
+      // Select the winner
+      winners[i] = _selectWinner(
+        ownerLineOffence,
+        ownerLineDefence,
+        participantLineOffence,
+        participantLineDefence
+      );
     }
+
+    return winners;
+  }
+
+  function executeBattle(
+    uint256 lobbyId,
+    Signature[3][3][2] memory stats
+  ) external {
+    // Check conditions
+    _checkBattleRequirements(lobbyId);
+    // Execute battle
+    uint8[3] memory winners = _calculateWinners(lobbyId, stats);
     // Transfer cards depending on winners
+    BattleLobby storage lobby = battleLobbies[lobbyId];
     for (uint8 i = 0; i < 3; i++) {
       uint8 winner = winners[i];
-      if (winner == 0) {
-        // Transfer back owner's and participant's cards
-        _transferCards(ownerBattleLines[i], lobby.ownerCards, lobby.owner);
-        _transferCards(
-          participantBattleLines[i],
-          lobby.participantCards,
-          lobby.participant
-        );
-      } else if (winner == 1) {
-        // Transfer back owner's cards and participant's cards to the owner
-        _transferCards(ownerBattleLines[i], lobby.ownerCards, lobby.owner);
-        _transferCards(
-          participantBattleLines[i],
-          lobby.participantCards,
-          lobby.owner
-        );
-      } else if (winner == 2) {
-        // Transfer owner's cards to the participant and transfer back participant's cards
-        _transferCards(
-          ownerBattleLines[i],
-          lobby.ownerCards,
-          lobby.participant
-        );
-        _transferCards(
-          participantBattleLines[i],
-          lobby.participantCards,
-          lobby.participant
-        );
-      }
+      address ownerCardsReceipient = (winner == 0 || winner == 1)
+        ? lobby.owner
+        : lobby.participant;
+      address participantCardsReceipient = (winner == 0 || winner == 2)
+        ? lobby.participant
+        : lobby.owner;
+      _transferCards(
+        lobby.ownerBattleLines[i],
+        lobby.ownerCards,
+        ownerCardsReceipient
+      );
+      _transferCards(
+        lobby.participantBattleLines[i],
+        lobby.participantCards,
+        participantCardsReceipient
+      );
     }
-
     // Emit event
     emit BattleExecuted(lobbyId, winners);
-
     // Delete the lobby for gas refund
     delete battleLobbies[lobbyId];
   }
@@ -626,28 +638,8 @@ contract Arena is Ownable {
     );
     require(!lobby.battleExecuted, "The battle has already been executed.");
     require(hasTimedOut(lobbyId), "The battle lobby has not timed out yet.");
-    // Return all cards to the owner if contract still holds them
-    for (uint256 i = 0; i < lobby.ownerCards.length; i++) {
-      if (farcantasyContract.ownerOf(lobby.ownerCards[i]) == address(this)) {
-        farcantasyContract.safeTransferFrom(
-          address(this),
-          lobby.owner,
-          lobby.ownerCards[i]
-        );
-      }
-    }
-    // Return all cards to the participant if contract still holds them
-    for (uint256 i = 0; i < lobby.participantCards.length; i++) {
-      if (
-        farcantasyContract.ownerOf(lobby.participantCards[i]) == address(this)
-      ) {
-        farcantasyContract.safeTransferFrom(
-          address(this),
-          lobby.participant,
-          lobby.participantCards[i]
-        );
-      }
-    }
+    // Return all cards
+    _returnAllCards(lobby);
     // Emit event
     emit BattleCancelledDueToTimeout(lobbyId);
     // Delete the lobby for gas refund

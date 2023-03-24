@@ -15,7 +15,7 @@ pragma solidity ^0.8.19;
 
 import "@big-whale-labs/versioned-contract/contracts/Versioned.sol";
 
-library Pairing {
+library CardRevealPairing {
   struct G1Point {
     uint X;
     uint Y;
@@ -217,27 +217,27 @@ library Pairing {
 contract CardRevealVerifier is Versioned {
   constructor(string memory _version) Versioned(_version) {}
 
-  using Pairing for *;
+  using CardRevealPairing for *;
   struct VerifyingKey {
-    Pairing.G1Point alfa1;
-    Pairing.G2Point beta2;
-    Pairing.G2Point gamma2;
-    Pairing.G2Point delta2;
-    Pairing.G1Point[] IC;
+    CardRevealPairing.G1Point alfa1;
+    CardRevealPairing.G2Point beta2;
+    CardRevealPairing.G2Point gamma2;
+    CardRevealPairing.G2Point delta2;
+    CardRevealPairing.G1Point[] IC;
   }
   struct Proof {
-    Pairing.G1Point A;
-    Pairing.G2Point B;
-    Pairing.G1Point C;
+    CardRevealPairing.G1Point A;
+    CardRevealPairing.G2Point B;
+    CardRevealPairing.G1Point C;
   }
 
   function verifyingKey() internal pure returns (VerifyingKey memory vk) {
-    vk.alfa1 = Pairing.G1Point(
+    vk.alfa1 = CardRevealPairing.G1Point(
       20491192805390485299153009773594534940189261866228447918068658471970481763042,
       9383485363053290200918347156157836566562967994039712273449902621266178545958
     );
 
-    vk.beta2 = Pairing.G2Point(
+    vk.beta2 = CardRevealPairing.G2Point(
       [
         4252822878758300859123897981450591353533073413197771768651442665752259397132,
         6375614351688725206403948262868962793625744043794305715222011528459656738731
@@ -247,7 +247,7 @@ contract CardRevealVerifier is Versioned {
         10505242626370262277552901082094356697409835680220590971873171140371331206856
       ]
     );
-    vk.gamma2 = Pairing.G2Point(
+    vk.gamma2 = CardRevealPairing.G2Point(
       [
         11559732032986387107991004021392285783925812861821192530917403151452391805634,
         10857046999023057135944570762232829481370756359578518086990519993285655852781
@@ -257,7 +257,7 @@ contract CardRevealVerifier is Versioned {
         8495653923123431417604973247489272438418190587263600148770280649306958101930
       ]
     );
-    vk.delta2 = Pairing.G2Point(
+    vk.delta2 = CardRevealPairing.G2Point(
       [
         12599857379517512478445603412764121041984228075771497593287716170335433683702,
         7912208710313447447762395792098481825752520616755888860068004689933335666613
@@ -267,59 +267,59 @@ contract CardRevealVerifier is Versioned {
         21679208693936337484429571887537508926366191105267550375038502782696042114705
       ]
     );
-    vk.IC = new Pairing.G1Point[](11);
+    vk.IC = new CardRevealPairing.G1Point[](11);
 
-    vk.IC[0] = Pairing.G1Point(
+    vk.IC[0] = CardRevealPairing.G1Point(
       17264503880123545052758080816280749852641946408351865121257786595811289438510,
       10763856694632557807833864895999637088262140784182858124277163512991885318602
     );
 
-    vk.IC[1] = Pairing.G1Point(
+    vk.IC[1] = CardRevealPairing.G1Point(
       10062562503979373587809551895392010962355702904691385573438744652647658565739,
       9605179257253056528897637597437760225647385169608321409826669538480579189810
     );
 
-    vk.IC[2] = Pairing.G1Point(
+    vk.IC[2] = CardRevealPairing.G1Point(
       1610733204083626996104625541738753634144307399150988355667101005880313628502,
       21264305406282447231291647636350993967281039352310948299333205848750642742709
     );
 
-    vk.IC[3] = Pairing.G1Point(
+    vk.IC[3] = CardRevealPairing.G1Point(
       5832550973073602779757756636697908039035973766448401180360992603686451287555,
       12744548672335242337647293659690519398736286070104771523484496791453920095232
     );
 
-    vk.IC[4] = Pairing.G1Point(
+    vk.IC[4] = CardRevealPairing.G1Point(
       10208565737294639058851811445034204949739148352486686788738853734311218610736,
       3603393250399756186627872296887133355410467766695596409700730562272236115604
     );
 
-    vk.IC[5] = Pairing.G1Point(
+    vk.IC[5] = CardRevealPairing.G1Point(
       12207120958572984987371213523056052261274802343082277872643680116858197267077,
       15483775022986389866063818107342569191369657639224242500080412803303882819886
     );
 
-    vk.IC[6] = Pairing.G1Point(
+    vk.IC[6] = CardRevealPairing.G1Point(
       16499712600214193065622387708849825627867920382087203119695792326439579870322,
       7341409413505283682363196042301463631587227974448407414953393185356144914299
     );
 
-    vk.IC[7] = Pairing.G1Point(
+    vk.IC[7] = CardRevealPairing.G1Point(
       13968707362372242931833934238549927076488305130121435750859745617374171112974,
       13355238385227502470633633305354558153088533484531738315009887958512288575963
     );
 
-    vk.IC[8] = Pairing.G1Point(
+    vk.IC[8] = CardRevealPairing.G1Point(
       11606706297503724373875136579933870972672702193002243583683030955510816200824,
       12271575803047532772563820892841836240111995993687289837374996708151769179497
     );
 
-    vk.IC[9] = Pairing.G1Point(
+    vk.IC[9] = CardRevealPairing.G1Point(
       21641615641762651727968284221229708271883532192500763691403578740710897336774,
       2978864479885843250833165570948250410823916317713803567110638650334216095598
     );
 
-    vk.IC[10] = Pairing.G1Point(
+    vk.IC[10] = CardRevealPairing.G1Point(
       9097420376231919994266873399221327958110048009089429994382562709724089924994,
       15092996927347903914233379267940951278670682138535419074095022313862664020582
     );
@@ -333,15 +333,18 @@ contract CardRevealVerifier is Versioned {
     VerifyingKey memory vk = verifyingKey();
     require(input.length + 1 == vk.IC.length, "verifier-bad-input");
     // Compute the linear combination vk_x
-    Pairing.G1Point memory vk_x = Pairing.G1Point(0, 0);
+    CardRevealPairing.G1Point memory vk_x = CardRevealPairing.G1Point(0, 0);
     for (uint i = 0; i < input.length; i++) {
       require(input[i] < snark_scalar_field, "verifier-gte-snark-scalar-field");
-      vk_x = Pairing.addition(vk_x, Pairing.scalar_mul(vk.IC[i + 1], input[i]));
+      vk_x = CardRevealPairing.addition(
+        vk_x,
+        CardRevealPairing.scalar_mul(vk.IC[i + 1], input[i])
+      );
     }
-    vk_x = Pairing.addition(vk_x, vk.IC[0]);
+    vk_x = CardRevealPairing.addition(vk_x, vk.IC[0]);
     if (
-      !Pairing.pairingProd4(
-        Pairing.negate(proof.A),
+      !CardRevealPairing.pairingProd4(
+        CardRevealPairing.negate(proof.A),
         proof.B,
         vk.alfa1,
         vk.beta2,
@@ -362,9 +365,9 @@ contract CardRevealVerifier is Versioned {
     uint[10] memory input
   ) public view returns (bool r) {
     Proof memory proof;
-    proof.A = Pairing.G1Point(a[0], a[1]);
-    proof.B = Pairing.G2Point([b[0][0], b[0][1]], [b[1][0], b[1][1]]);
-    proof.C = Pairing.G1Point(c[0], c[1]);
+    proof.A = CardRevealPairing.G1Point(a[0], a[1]);
+    proof.B = CardRevealPairing.G2Point([b[0][0], b[0][1]], [b[1][0], b[1][1]]);
+    proof.C = CardRevealPairing.G1Point(c[0], c[1]);
     uint[] memory inputValues = new uint[](input.length);
     for (uint i = 0; i < input.length; i++) {
       inputValues[i] = input[i];
