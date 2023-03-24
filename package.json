@@ -14,7 +14,8 @@
     "yarn": false
   },
   "files": [
-    "dist/typechain/**/*"
+    "dist/typechain/**/*",
+    "contracts/**/*.sol"
   ],
   "main": "dist/typechain/index.js",
   "types": "dist/typechain/index.d.ts",
@@ -28,7 +29,10 @@
     "lint": "prettier --check . && eslint --max-warnings 0 --ext ts scripts test && yarn eth-lint",
     "prettify": "prettier --write .",
     "release": "np",
-    "prepublishOnly": "yarn build && yarn tsc"
+    "prepublishOnly": "yarn build && yarn tsc",
+    "generate-inputs": "ts-node scripts/generate-inputs.ts",
+    "compile": "scripts/compile-circuit.sh CardSelection card-selection 13",
+    "download-ptau": "curl https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_13.ptau -o pot/pot13_final.ptau"
   },
   "devDependencies": {
     "@ethersproject/providers": "^5.7.2",
@@ -44,6 +48,9 @@
     "@typescript-eslint/eslint-plugin": "^5.56.0",
     "@typescript-eslint/parser": "^5.56.0",
     "chai": "^4.3.7",
+    "circom_tester": "^0.0.19",
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
     "dotenv": "^16.0.3",
     "envalid": "^7.3.1",
     "eslint": "^8.36.0",
@@ -62,6 +69,7 @@
     "np": "^7.6.4",
     "prettier": "^2.8.6",
     "prettier-plugin-solidity": "^1.1.3",
+    "snarkjs": "^0.6.10",
     "solhint": "^3.4.1",
     "solidity-coverage": "^0.8.2",
     "ts-node": "^10.9.1",

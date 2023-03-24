@@ -21,3 +21,13 @@ artifacts
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# circuits
+build/*
+!build/.gitkeep
+public/*
+!public/.gitkeep
+pot/*
+!pot/.gitkeep
+inputs/*
+!inputs/.gitkeep

@@ -6,3 +6,8 @@ gasReporterOutput.json
 typechain
 .yarn
 dist
+build
+pot
+input-*.json
+*verification_key.json
+public
