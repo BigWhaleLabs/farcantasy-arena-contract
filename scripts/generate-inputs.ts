@@ -6,6 +6,7 @@ import getCardSelectionInputs from '../utils/getCardSelectionInputs'
 void (async () => {
   const inputs = {
     'card-selection': getCardSelectionInputs,
+    'card-reveal': getCardSelectionInputs,
   }
   for (const [name, fn] of Object.entries(inputs)) {
     const inputs = await fn()

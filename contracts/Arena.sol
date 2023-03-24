@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "./models/BattleLobby.sol";
 import "./models/Signature.sol";
 import "./verifiers/CardSelectionVerifier.sol";
-import "./interfaces/ICardRevealVerifier.sol";
+import "./verifiers/CardRevealVerifier.sol";
 
 contract Arena is Ownable {
   using Counters for Counters.Counter;
@@ -16,7 +16,7 @@ contract Arena is Ownable {
   // Contracts
   IERC721 public immutable farcantasyContract;
   CardSelectionVerifier public immutable cardSelectionVerifierContract;
-  ICardRevealVerifier public immutable cardRevealVerifierContract;
+  CardRevealVerifier public immutable cardRevealVerifierContract;
   address public immutable attestorEcdsaAddress;
 
   // State
@@ -63,7 +63,7 @@ contract Arena is Ownable {
     cardSelectionVerifierContract = CardSelectionVerifier(
       _cardSelectionVerifierContract
     );
-    cardRevealVerifierContract = ICardRevealVerifier(
+    cardRevealVerifierContract = CardRevealVerifier(
       _cardRevealVerifierContract
     );
     attestorEcdsaAddress = _attestorEcdsaAddress;
@@ -409,6 +409,7 @@ contract Arena is Ownable {
     // 1. 32 bytes of card id (uint256)
     // 2. 2 bytes of offence stats (uint16)
     // 3. 2 bytes of defence stats (uint16)
+    // 4. 32 bytes of timestamp (uint256)
 
     // Verify the signature
     (address recoveredAttestorAddress, ECDSA.RecoverError ecdsaError) = ECDSA
@@ -421,6 +422,10 @@ contract Arena is Ownable {
       recoveredAttestorAddress == attestorEcdsaAddress,
       "Wrong attestor public key"
     );
+
+    // Extract the timestamp and require it to be less than two days ago
+    uint256 timestamp = abi.decode(_sliceBytes(data, 36, 32), (uint256));
+    require(block.timestamp - timestamp <= 2 days, "Timestamp is too old");
 
     // Return the stats
     return (
