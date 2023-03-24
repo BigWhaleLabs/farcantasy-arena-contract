@@ -31,8 +31,8 @@
     "release": "np",
     "prepublishOnly": "yarn build && yarn tsc",
     "generate-inputs": "ts-node scripts/generate-inputs.ts",
-    "compile": "scripts/compile-circuit.sh CardSelection card-selection 13",
-    "download-ptau": "curl https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_13.ptau -o pot/pot13_final.ptau"
+    "compile": "scripts/compile-circuit.sh CardSelection card-selection 9",
+    "download-ptau": "curl https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_09.ptau -o pot/pot9_final.ptau"
   },
   "devDependencies": {
     "@ethersproject/providers": "^5.7.2",

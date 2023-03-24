@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "./models/BattleLobby.sol";
 import "./models/Signature.sol";
-import "./interfaces/ICardSelectionVerifier.sol";
+import "./verifiers/CardSelectionVerifier.sol";
 import "./interfaces/ICardRevealVerifier.sol";
 
 contract Arena is Ownable {
@@ -15,7 +15,7 @@ contract Arena is Ownable {
 
   // Contracts
   IERC721 public immutable farcantasyContract;
-  ICardSelectionVerifier public immutable cardSelectionVerifierContract;
+  CardSelectionVerifier public immutable cardSelectionVerifierContract;
   ICardRevealVerifier public immutable cardRevealVerifierContract;
   address public immutable attestorEcdsaAddress;
 
@@ -60,7 +60,7 @@ contract Arena is Ownable {
     address _attestorEcdsaAddress
   ) {
     farcantasyContract = IERC721(_farcantasyContract);
-    cardSelectionVerifierContract = ICardSelectionVerifier(
+    cardSelectionVerifierContract = CardSelectionVerifier(
       _cardSelectionVerifierContract
     );
     cardRevealVerifierContract = ICardRevealVerifier(
