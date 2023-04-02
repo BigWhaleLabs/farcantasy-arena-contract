@@ -32,9 +32,11 @@
     "prepublishOnly": "yarn build && yarn tsc",
     "generate-inputs": "ts-node scripts/generate-inputs.ts",
     "compile": "yarn compile-selection && yarn compile-reveal",
-    "compile-selection": "scripts/compile-circuit.sh CardSelection card-selection 9",
+    "compile-selection": "scripts/compile-circuit.sh CardSelection card-selection 12",
     "compile-reveal": "scripts/compile-circuit.sh CardReveal card-reveal 9",
-    "download-ptau": "curl https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_09.ptau -o pot/pot9_final.ptau"
+    "download-ptau": "yarn download-ptau-9 && yarn download-ptau-12",
+    "download-ptau-9": "curl https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_09.ptau -o pot/pot9_final.ptau",
+    "download-ptau-12": "curl https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_12.ptau -o pot/pot12_final.ptau"
   },
   "devDependencies": {
     "@ethersproject/providers": "^5.7.2",
