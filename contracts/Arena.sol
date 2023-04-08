@@ -154,6 +154,7 @@ contract Arena is Ownable {
   ) external {
     BattleLobby storage lobby = battleLobbies[lobbyId];
     // Check conditions
+    require(_hasNoDuplicates(cardIds), "CardIds must be unique.");
     require(
       lobby.owner != address(0),
       "The specified battle lobby does not exist."
