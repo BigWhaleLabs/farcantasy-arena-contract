@@ -139,7 +139,7 @@ describe.only('Arena', function () {
     })
   })
 
-  describe.only('joinBattleLobby', function () {
+  describe('joinBattleLobby', function () {
     const ownerCardIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     const participantCardIds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     let participant: Signer
@@ -295,7 +295,6 @@ describe.only('Arena', function () {
       // Check if the participant has been added to the battle lobby with the correct state
       const updatedLobby = await arena.battleLobbies(0)
       expect(updatedLobby.participant).to.equal(await participant.getAddress())
-      // expect(updatedLobby.participantCards).to.eql(participantCardIds)
 
       // Check if the last activity timestamp has been updated
       const updatedLastActivityTimestamp = updatedLobby.lastActivityTimestamp
