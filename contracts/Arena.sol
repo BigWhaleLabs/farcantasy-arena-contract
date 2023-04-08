@@ -79,6 +79,7 @@ contract Arena is Ownable {
       farcantasyContract.isApprovedForAll(msg.sender, address(this)),
       "You must approve the contract to transfer your cards."
     );
+    require(_hasNoDuplicates(cardIds), "CardIds must be unique.");
     // Transfer cards from the owner to the contract
     for (uint256 i = 0; i < cardIds.length; i++) {
       farcantasyContract.safeTransferFrom(
@@ -128,6 +129,19 @@ contract Arena is Ownable {
     emit BattleLobbyCreated(battleLobbyIndex.current(), msg.sender, cardIds);
     // Increment battle lobby index
     battleLobbyIndex.increment();
+  }
+
+  function _hasNoDuplicates(
+    uint256[10] memory cardIds
+  ) internal pure returns (bool) {
+    for (uint256 i = 0; i < cardIds.length; i++) {
+      for (uint256 j = i + 1; j < cardIds.length; j++) {
+        if (cardIds[i] == cardIds[j]) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   /**
