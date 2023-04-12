@@ -193,6 +193,9 @@ contract Arena is Ownable {
     address owner
   ) private {
     for (uint256 i = 0; i < cards.length; i++) {
+      if (cards[i] == 0) {
+        continue;
+      }
       if (farcantasyContract.ownerOf(cards[i]) != address(this)) {
         continue;
       }
@@ -363,26 +366,33 @@ contract Arena is Ownable {
     // Return unused cards
     uint256[5] memory unusedCardIds;
     uint8 unusedCardCount = 0;
+
+    bool[10] memory usedCards;
+
     for (uint8 i = 0; i < 3; i++) {
-      if (unusedCardCount > 4) {
-        break;
-      }
       for (uint8 j = 0; j < 3; j++) {
-        if (unusedCardCount > 4) {
-          break;
-        }
         uint8 usedCardIndex = battleLines[i][j];
-        if (usedCardIndex == 0) {
-          continue;
+        if (usedCardIndex != 0) {
+          usedCards[usedCardIndex - 1] = true;
         }
+      }
+    }
+
+    for (uint8 i = 0; i < 10; i++) {
+      if (!usedCards[i]) {
         uint256 cardId = isOwner
-          ? lobby.ownerCards[usedCardIndex - 1]
-          : lobby.participantCards[usedCardIndex - 1];
+          ? lobby.ownerCards[i]
+          : lobby.participantCards[i];
         // Add id to unusedCardIds
         unusedCardIds[unusedCardCount] = cardId;
         unusedCardCount++;
+
+        if (unusedCardCount > 4) {
+          break;
+        }
       }
     }
+
     for (uint8 i = 0; i < unusedCardCount; i++) {
       farcantasyContract.safeTransferFrom(
         address(this),
