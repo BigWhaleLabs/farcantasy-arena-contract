@@ -10,7 +10,7 @@ import ERC721Artifact from '@openzeppelin/contracts/build/contracts/IERC721.json
 const { deployMockContract } = waffle
 const attestorEcdsaAddress = '0x02E6777CFd5fA466defbC95a1641058DF99b4993'
 
-describe.only('Arena', function () {
+describe('Arena', function () {
   let arena: Arena
   let deployer: Signer
   let farcantasyContract: MockContract
@@ -606,7 +606,7 @@ describe.only('Arena', function () {
     })
   })
 
-  describe.only('revealCards', function () {
+  describe('revealCards', function () {
     const cardSelectionProof = [
       [3, 1],
       [
@@ -781,7 +781,7 @@ describe.only('Arena', function () {
       )
     })
 
-    it.only('should reveal cards, emit event, and return unused cards', async function () {
+    it('should reveal cards, emit event, and return unused cards', async function () {
       // Mock the cardRevealVerifierContract.verifyProof function to return true
       await cardRevealVerifierContract.mock.verifyProof.returns(true)
       // Mock safeTransferFrom
@@ -792,93 +792,77 @@ describe.only('Arena', function () {
           .withArgs(arena.address, await deployer.getAddress(), cardId)
           .returns()
       }
+
       // Reveal cards for the owner
-      // await expect(arena.revealCards(0, ...cardRevealProof))
-      //   .to.emit(arena, 'CardsRevealed')
-      //   .withArgs(0, await deployer.getAddress(), [
-      //     [1, 2, 3],
-      //     [4, 0, 0],
-      //     [5, 0, 0],
-      //   ])
+      const revealCardsTx = await arena.revealCards(0, ...cardRevealProof)
+      await expect(revealCardsTx).to.emit(arena, 'CardsRevealed')
+      await expect(revealCardsTx)
+        .to.emit(arena, 'UnusedCardsReturned')
+        .withArgs(0, await deployer.getAddress(), [6, 7, 8, 9, 10])
 
-      // // Check if the battle lines are stored correctly
-      // const battleLobby = await arena.battleLobbies(0)
-      // expect(battleLobby.ownerBattleLines).to.deep.equal([
-      //   [1, 2, 3],
-      //   [4, 5, 6],
-      //   [7, 8, 9],
-      // ])
-      // expect(battleLobby.isOwnerBattleLinesRevealed).to.equal(true)
+      const battleLobby = await arena.battleLobbies(0)
 
-      // // Check if unused cards are returned
-      // await expect(arena.revealCards(0, ...cardRevealProof))
-      //   .to.emit(arena, 'UnusedCardsReturned')
-      //   .withArgs(0, await deployer.getAddress(), [ownerCardIds[9], 0, 0, 0, 0])
+      // Check if the battle lines are stored correctly
+      const ownerBattleLines = await arena.getOwnerBattleLines(0)
+      expect(ownerBattleLines).to.deep.equal([
+        [1, 2, 3],
+        [4, 0, 0],
+        [5, 0, 0],
+      ])
+      expect(battleLobby.isOwnerBattleLinesRevealed).to.equal(true)
 
-      // // Reveal cards for the participant
-      // await expect(
-      //   arena.connect(participant).revealCards(0, ...cardRevealProof)
-      // )
-      //   .to.emit(arena, 'CardsRevealed')
-      //   .withArgs(0, await participant.getAddress(), [
-      //     [1, 2, 3],
-      //     [4, 5, 6],
-      //     [7, 8, 9],
-      //   ])
+      // Mock safeTransferFrom
+      for (const cardId of [16, 17, 18, 19, 20]) {
+        await farcantasyContract.mock[
+          'safeTransferFrom(address,address,uint256)'
+        ]
+          .withArgs(arena.address, await participant.getAddress(), cardId)
+          .returns()
+      }
 
-      // // Check if the battle lines are stored correctly
-      // const updatedBattleLobby = await arena.battleLobbies(0)
-      // expect(updatedBattleLobby.participantBattleLines).to.deep.equal([
-      //   [1, 2, 3],
-      //   [4, 5, 6],
-      //   [7, 8, 9],
-      // ])
-      // expect(updatedBattleLobby.isParticipantBattleLinesRevealed).to.equal(true)
+      // Reveal cards for the participant
+      const participantCardRevealProof = [
+        [3, 1],
+        [
+          [7, 8],
+          [2, 5],
+        ],
+        [9, 6],
+        [2, 1, 2, 3, 4, 0, 0, 5, 0, 0],
+      ] as [
+        [number, number],
+        [[number, number], [number, number]],
+        [number, number],
+        [
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+          number
+        ]
+      ]
+      const revealParticipantCardsTx = await arena
+        .connect(participant)
+        .revealCards(0, ...participantCardRevealProof)
+      await expect(revealParticipantCardsTx).to.emit(arena, 'CardsRevealed')
+      await expect(revealParticipantCardsTx)
+        .to.emit(arena, 'UnusedCardsReturned')
+        .withArgs(0, await participant.getAddress(), [16, 17, 18, 19, 20])
 
-      // // Check if unused cards are returned
-      // await expect(
-      //   arena.connect(participant).revealCards(0, ...cardRevealProof)
-      // )
-      //   .to.emit(arena, 'UnusedCardsReturned')
-      //   .withArgs(0, await participant.getAddress(), [
-      //     participantCardIds[9],
-      //     0,
-      //     0,
-      //     0,
-      //     0,
-      //   ])
+      // Check if the battle lines are stored correctly
+      const updatedBattleLobby = await arena.battleLobbies(0)
+      const participantBattleLines = await arena.getParticipantBattleLines(0)
+      expect(participantBattleLines).to.deep.equal([
+        [1, 2, 3],
+        [4, 0, 0],
+        [5, 0, 0],
+      ])
+      expect(updatedBattleLobby.isParticipantBattleLinesRevealed).to.equal(true)
     })
-
-    // it('should update the last activity timestamp', async function () {
-    //   // Mock the cardRevealVerifierContract.verifyProof function to return true
-    //   await cardRevealVerifierContract.mock.verifyProof.returns(true)
-    //   const initialBattleLobby = await arena.battleLobbies(0)
-    //   const initialTimestamp = initialBattleLobby.lastActivityTimestamp
-
-    //   // Wait for 2 seconds
-    //   await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    //   // Reveal cards for the owner
-    //   await arena.revealCards(0, ...cardRevealProof)
-
-    //   // Check if the last activity timestamp is updated
-    //   const updatedBattleLobby = await arena.battleLobbies(0)
-    //   const updatedTimestamp = updatedBattleLobby.lastActivityTimestamp
-    //   expect(updatedTimestamp).to.be.gt(initialTimestamp)
-
-    //   const initialBattleLobby = await arena.battleLobbies(0)
-    //   const initialTimestamp = initialBattleLobby.lastActivityTimestamp
-
-    //   // Wait for 2 seconds
-    //   await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    //   // Reveal cards for the owner
-    //   await arena.revealCards(0, ...cardRevealProof)
-
-    //   // Check if the last activity timestamp is updated
-    //   const updatedBattleLobby = await arena.battleLobbies(0)
-    //   const updatedTimestamp = updatedBattleLobby.lastActivityTimestamp
-    //   expect(updatedTimestamp).to.be.gt(initialTimestamp)
-    // })
   })
 })

@@ -619,6 +619,22 @@ contract Arena is Ownable {
   }
 
   /**
+   * Helpers
+   */
+
+  function getOwnerBattleLines(
+    uint256 lobbyId
+  ) external view returns (uint8[3][3] memory) {
+    return battleLobbies[lobbyId].ownerBattleLines;
+  }
+
+  function getParticipantBattleLines(
+    uint256 lobbyId
+  ) external view returns (uint8[3][3] memory) {
+    return battleLobbies[lobbyId].participantBattleLines;
+  }
+
+  /**
    * Admin functions
    */
 
