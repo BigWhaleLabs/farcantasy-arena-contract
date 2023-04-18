@@ -450,11 +450,20 @@ contract Arena is Ownable {
     uint256 timestamp = abi.decode(_sliceBytes(data, 36, 32), (uint256));
     require(block.timestamp - timestamp <= 2 days, "Timestamp is too old");
 
+    // Log offence and defence bytes
+    bytes memory offenceBytes = _sliceBytes(data, 32, 2);
+    bytes memory defenceBytes = _sliceBytes(data, 34, 2);
+    uint16 decodedOffence = uint16(
+      (uint8(offenceBytes[0]) << 8) | uint8(offenceBytes[1])
+    );
+    uint16 decodedDefence = uint16(
+      (uint8(defenceBytes[0]) << 8) | uint8(defenceBytes[1])
+    );
     // Return the stats
     return (
       abi.decode(_sliceBytes(data, 0, 32), (uint256)),
-      abi.decode(_sliceBytes(data, 32, 2), (uint16)),
-      abi.decode(_sliceBytes(data, 34, 2), (uint16))
+      decodedOffence,
+      decodedDefence
     );
   }
 

@@ -10,17 +10,18 @@ import approveTransfer from '../utils/approveTransfer'
 import createBattleLobby from '../utils/createBattleLobby'
 import defaultCardIds from '../utils/defaultCardIds'
 import defaultCardSelection from '../utils/defaultCardSelection'
+import getBattleLines from '../utils/getBattleLines'
 import getCardRevealProof from '../utils/getCardRevealProof'
 import getCardSelectionProof from '../utils/getCardSelectionProof'
-import getSignedStats from '../utils/getSignedStats'
+import getSignedStats, { ecdsaWallet } from '../utils/getSignedStats'
 import getUnselectedCardIds from '../utils/getUnselectedCardIds'
 import joinBattleLobby from '../utils/joinBattleLobby'
 import mockOwnership from '../utils/mockOwnership'
+import statsAndOutcomes from '../utils/statsAndOutcomes'
 
 const { deployMockContract } = waffle
-const attestorEcdsaAddress = '0x02E6777CFd5fA466defbC95a1641058DF99b4993'
 
-describe.only('Arena', function () {
+describe('Arena', function () {
   let arena: Arena
   let deployer: Signer
   let farcantasyContract: MockContract
@@ -47,7 +48,7 @@ describe.only('Arena', function () {
       farcantasyContract.address,
       cardSelectionVerifierContract.address,
       cardRevealVerifierContract.address,
-      attestorEcdsaAddress
+      ecdsaWallet.address
     )
     await arena.deployed()
   })
@@ -63,7 +64,7 @@ describe.only('Arena', function () {
       expect(await arena.cardRevealVerifierContract()).to.equal(
         cardRevealVerifierContract.address
       )
-      expect(await arena.attestorEcdsaAddress()).to.equal(attestorEcdsaAddress)
+      expect(await arena.attestorEcdsaAddress()).to.equal(ecdsaWallet.address)
     })
 
     it('constructor should set initial battleLobbyIndex to 0', async function () {
@@ -573,54 +574,64 @@ describe.only('Arena', function () {
         .revealCards(0, ...participantCardRevealProof)
     })
 
-    it('should execute the battle, transfer cards, emit event, and delete the lobby', async function () {
-      // // Execute the battle
-      // const executeBattleTx = await arena.executeBattle(0, [
-      //   await getSignedStats(ownerCardIds),
-      //   await getSignedStats(participantCardIds),
-      // ])
-      // // Check if the BattleExecuted event is emitted with the correct winners
-      // const expectedWinners = [0, 1, 2] // Replace with the expected winners based on your mocked stats
-      // await expect(executeBattleTx)
-      //   .to.emit(arena, 'BattleExecuted')
-      //   .withArgs(0, expectedWinners)
-      // // Check if the cards are transferred correctly based on the winners
-      // for (let i = 0; i < 3; i++) {
-      //   const winner = expectedWinners[i]
-      //   const ownerCardRecipient =
-      //     winner === 0 || winner === 1
-      //       ? await deployer.getAddress()
-      //       : await participant.getAddress()
-      //   const participantCardRecipient =
-      //     winner === 0 || winner === 2
-      //       ? await participant.getAddress()
-      //       : await deployer.getAddress()
-      //   // Check owner cards
-      //   const ownerCard = ownerCardIds[i]
-      //   expect(await farcantasyContract.balanceOf(ownerCardRecipient)).to.equal(
-      //     1
-      //   )
-      //   expect(
-      //     await farcantasyContract.tokenOfOwnerByIndex(ownerCardRecipient, 0)
-      //   ).to.equal(ownerCard)
-      //   // Check participant cards
-      //   const participantCard = participantCardIds[i]
-      //   expect(
-      //     await farcantasyContract.balanceOf(participantCardRecipient)
-      //   ).to.equal(1)
-      //   expect(
-      //     await farcantasyContract.tokenOfOwnerByIndex(
-      //       participantCardRecipient,
-      //       0
-      //     )
-      //   ).to.equal(participantCard)
-      // }
-      // // Check if the battle lobby is deleted
-      // const deletedBattleLobby = await arena.battleLobbies(0)
-      // expect(deletedBattleLobby.owner).to.equal(ethers.constants.AddressZero)
-      // expect(deletedBattleLobby.participant).to.equal(
-      //   ethers.constants.AddressZero
-      // )
-    })
+    for (const {
+      participantStats,
+      ownerStats,
+      expectedWinners,
+    } of statsAndOutcomes) {
+      it(`should execute the battle, transfer cards, emit event, and delete the lobby ${expectedWinners}`, async function () {
+        // Check if the BattleExecuted event is emitted with the correct winners
+        const ownerBattleLines = getBattleLines(ownerCardIds)
+        const participantBattleLines = getBattleLines(participantCardIds)
+
+        for (let i = 0; i < 3; i++) {
+          const winner = expectedWinners[i]
+          const ownerCardRecipient =
+            winner === 0 || winner === 1
+              ? await deployer.getAddress()
+              : await participant.getAddress()
+          const participantCardRecipient =
+            winner === 0 || winner === 2
+              ? await participant.getAddress()
+              : await deployer.getAddress()
+          // Allow transfer for owner cards
+          await approveTransfer(
+            farcantasyContract,
+            arena.address,
+            ownerCardRecipient,
+            ownerBattleLines[i]
+          )
+          // Allow transfer for participant cards
+          await approveTransfer(
+            farcantasyContract,
+            arena.address,
+            participantCardRecipient,
+            participantBattleLines[i]
+          )
+        }
+        await expect(
+          arena.executeBattle(0, [
+            await getSignedStats(
+              ownerCardIds,
+              defaultCardSelection,
+              ownerStats
+            ),
+            await getSignedStats(
+              participantCardIds,
+              defaultCardSelection,
+              participantStats
+            ),
+          ])
+        )
+          .to.emit(arena, 'BattleExecuted')
+          .withArgs(0, expectedWinners)
+        // Check if the battle lobby is deleted
+        const deletedBattleLobby = await arena.battleLobbies(0)
+        expect(deletedBattleLobby.owner).to.equal(ethers.constants.AddressZero)
+        expect(deletedBattleLobby.participant).to.equal(
+          ethers.constants.AddressZero
+        )
+      })
+    }
   })
 })
