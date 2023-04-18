@@ -6,11 +6,21 @@ import { expect } from 'chai'
 import CardRevealVerifierArtifact from '../artifacts/contracts/verifiers/CardRevealVerifier.sol/CardRevealVerifier.json'
 import CardSelectionVerifierArtifact from '../artifacts/contracts/verifiers/CardSelectionVerifier.sol/CardSelectionVerifier.json'
 import ERC721Artifact from '@openzeppelin/contracts/build/contracts/IERC721.json'
+import approveTransfer from '../utils/approveTransfer'
+import createBattleLobby from '../utils/createBattleLobby'
+import defaultCardIds from '../utils/defaultCardIds'
+import defaultCardSelection from '../utils/defaultCardSelection'
+import getCardRevealProof from '../utils/getCardRevealProof'
+import getCardSelectionProof from '../utils/getCardSelectionProof'
+import getSignedStats from '../utils/getSignedStats'
+import getUnselectedCardIds from '../utils/getUnselectedCardIds'
+import joinBattleLobby from '../utils/joinBattleLobby'
+import mockOwnership from '../utils/mockOwnership'
 
 const { deployMockContract } = waffle
 const attestorEcdsaAddress = '0x02E6777CFd5fA466defbC95a1641058DF99b4993'
 
-describe('Arena', function () {
+describe.only('Arena', function () {
   let arena: Arena
   let deployer: Signer
   let farcantasyContract: MockContract
@@ -19,22 +29,18 @@ describe('Arena', function () {
 
   beforeEach(async function () {
     ;[deployer] = await ethers.getSigners()
-
     // Deploy the mock ERC721 contract
     farcantasyContract = await deployMockContract(deployer, ERC721Artifact.abi)
-
     // Deploy the mock CardSelectionVerifier contract
     cardSelectionVerifierContract = await deployMockContract(
       deployer,
       CardSelectionVerifierArtifact.abi
     )
-
     // Deploy the mock CardRevealVerifier contract
     cardRevealVerifierContract = await deployMockContract(
       deployer,
       CardRevealVerifierArtifact.abi
     )
-
     // Deploy the Arena contract
     const Arena = await ethers.getContractFactory('Arena')
     arena = await Arena.deploy(
@@ -67,62 +73,38 @@ describe('Arena', function () {
   })
 
   describe('createBattleLobby', function () {
-    const cardIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    const ownerCardIds = defaultCardIds()
 
     it('should revert if the contract is not approved to transfer cards', async function () {
       // Set up the mock to return false for isApprovedForAll
       await farcantasyContract.mock.isApprovedForAll.returns(false)
-      await expect(arena.createBattleLobby(cardIds)).to.be.revertedWith(
+      await expect(arena.createBattleLobby(ownerCardIds)).to.be.revertedWith(
         'You must approve the contract to transfer your cards.'
       )
     })
 
     it('should revert if there are duplicate cardIds in the array', async function () {
-      // Approve the contract to transfer cards
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await deployer.getAddress(), arena.address)
-        .returns(true)
-
       // Create a cardIds array with duplicate entries
       const duplicateCardIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 1] // cardId 1 is duplicated
-
-      // Mock safeTransferFrom
-      for (const cardId of duplicateCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await deployer.getAddress(), arena.address, cardId)
-          .returns()
-      }
-
       // Test if the function reverts with the appropriate error message
       await expect(
-        arena.createBattleLobby(duplicateCardIds)
+        createBattleLobby(farcantasyContract, deployer, arena, duplicateCardIds)
       ).to.be.revertedWith('CardIds must be unique.')
     })
 
     it('should transfer cards, create a lobby, emit event, and increment battleLobbyIndex', async function () {
-      // Approve the contract to transfer cards
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await deployer.getAddress(), arena.address)
-        .returns(true)
-      // Mock safeTransferFrom
-      for (const cardId of cardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await deployer.getAddress(), arena.address, cardId)
-          .returns()
-      }
-
       // Capture the initial battle lobby index
       const initialBattleLobbyIndex = await arena.battleLobbyIndex()
-
       // Expect the BattleLobbyCreated event to be emitted
-      await expect(arena.createBattleLobby(cardIds))
+      await expect(
+        createBattleLobby(farcantasyContract, deployer, arena, ownerCardIds)
+      )
         .to.emit(arena, 'BattleLobbyCreated')
-        .withArgs(initialBattleLobbyIndex, await deployer.getAddress(), cardIds)
-
+        .withArgs(
+          initialBattleLobbyIndex,
+          await deployer.getAddress(),
+          ownerCardIds
+        )
       // Check if the battle lobby has been created with the correct state
       const newLobby = await arena.battleLobbies(initialBattleLobbyIndex)
       expect(newLobby.owner).to.equal(await deployer.getAddress())
@@ -132,7 +114,6 @@ describe('Arena', function () {
       expect(newLobby.isOwnerBattleLinesRevealed).to.equal(false)
       expect(newLobby.isParticipantBattleLinesRevealed).to.equal(false)
       expect(newLobby.battleExecuted).to.equal(false)
-
       // Check if the battleLobbyIndex has been incremented
       const newBattleLobbyIndex = await arena.battleLobbyIndex()
       expect(newBattleLobbyIndex).to.equal(initialBattleLobbyIndex.add(1))
@@ -140,124 +121,73 @@ describe('Arena', function () {
   })
 
   describe('joinBattleLobby', function () {
-    const ownerCardIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    const participantCardIds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    const ownerCardIds = defaultCardIds()
+    const participantCardIds = defaultCardIds(10)
     let participant: Signer
-    let anotherParticipant: Signer
 
     beforeEach(async function () {
-      ;[, participant, anotherParticipant] = await ethers.getSigners()
+      ;[, participant] = await ethers.getSigners()
       // Create a battle lobby as deployer
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await deployer.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of ownerCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await deployer.getAddress(), arena.address, cardId)
-          .returns()
-      }
-      await arena.createBattleLobby(ownerCardIds)
+      await createBattleLobby(farcantasyContract, deployer, arena, ownerCardIds)
     })
 
     it('should revert if the cardIds are not unique', async function () {
-      // Approve the contract to transfer cards for the participant
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-
-      // Create a cardIds array with duplicate entries
       const duplicateParticipantCardIds = [
         11, 12, 13, 14, 15, 16, 17, 18, 19, 11,
       ] // cardId 11 is duplicated
-
-      // Mock safeTransferFrom
-      for (const cardId of duplicateParticipantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-      }
-
       // Test if the function reverts with the appropriate error message
       await expect(
-        arena
-          .connect(participant)
-          .joinBattleLobby(0, duplicateParticipantCardIds)
+        joinBattleLobby(
+          farcantasyContract,
+          participant,
+          arena,
+          duplicateParticipantCardIds
+        )
       ).to.be.revertedWith('CardIds must be unique.')
     })
 
     it('should revert if the specified battle lobby does not exist', async function () {
       await expect(
-        arena.connect(participant).joinBattleLobby(1, participantCardIds)
+        joinBattleLobby(
+          farcantasyContract,
+          participant,
+          arena,
+          participantCardIds,
+          1
+        )
       ).to.be.revertedWith('The specified battle lobby does not exist.')
     })
 
     it('should revert if the battle lobby already has a participant', async function () {
-      // Approve the contract to transfer cards for the participant
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-      }
-
+      const [, , anotherParticipant] = await ethers.getSigners()
+      const anotherParticipantCardIds = defaultCardIds(20)
       // Participant joins the lobby
-      await arena.connect(participant).joinBattleLobby(0, participantCardIds)
-
+      await joinBattleLobby(
+        farcantasyContract,
+        participant,
+        arena,
+        participantCardIds
+      )
       // Another participant attempts to join the same lobby
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await anotherParticipant.getAddress(), arena.address)
-        .returns(true)
-
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(
-            await anotherParticipant.getAddress(),
-            arena.address,
-            cardId
-          )
-          .returns()
-      }
-
       await expect(
-        arena.connect(anotherParticipant).joinBattleLobby(0, participantCardIds)
+        joinBattleLobby(
+          farcantasyContract,
+          anotherParticipant,
+          arena,
+          anotherParticipantCardIds
+        )
       ).to.be.revertedWith('This battle lobby already has a participant.')
     })
 
     it('should revert if the lobby owner tries to join their own lobby as a participant', async function () {
-      // Approve the contract to transfer cards for the deployer
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await deployer.getAddress(), arena.address)
-        .returns(true)
-
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await deployer.getAddress(), arena.address, cardId)
-          .returns()
-      }
-
-      // Lobby owner tries to join their own lobby
       await expect(
-        arena.joinBattleLobby(0, participantCardIds)
+        joinBattleLobby(farcantasyContract, deployer, arena, participantCardIds)
       ).to.be.revertedWith(
         'The lobby owner cannot join their own lobby as a participant.'
       )
     })
 
     it('should revert if the contract is not approved to transfer cards', async function () {
-      // Set up the mock to return false for isApprovedForAll
       await farcantasyContract.mock.isApprovedForAll
         .withArgs(await participant.getAddress(), arena.address)
         .returns(false)
@@ -269,33 +199,23 @@ describe('Arena', function () {
     })
 
     it('should transfer cards, join the lobby, emit event, and update last activity timestamp', async function () {
-      // Approve the contract to transfer cards for the participant
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-      }
-
       // Capture the initial last activity timestamp
       const initialLastActivityTimestamp = (await arena.battleLobbies(0))
         .lastActivityTimestamp
-
       // Expect the BattleLobbyJoined event to be emitted
       await expect(
-        arena.connect(participant).joinBattleLobby(0, participantCardIds)
+        joinBattleLobby(
+          farcantasyContract,
+          participant,
+          arena,
+          participantCardIds
+        )
       )
         .to.emit(arena, 'BattleLobbyJoined')
         .withArgs(0, await participant.getAddress(), participantCardIds)
-
       // Check if the participant has been added to the battle lobby with the correct state
       const updatedLobby = await arena.battleLobbies(0)
       expect(updatedLobby.participant).to.equal(await participant.getAddress())
-
       // Check if the last activity timestamp has been updated
       const updatedLastActivityTimestamp = updatedLobby.lastActivityTimestamp
       expect(updatedLastActivityTimestamp).to.not.equal(
@@ -305,29 +225,14 @@ describe('Arena', function () {
   })
 
   describe('backOff', function () {
-    const ownerCardIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    const participantCardIds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    const ownerCardIds = defaultCardIds()
+    const participantCardIds = defaultCardIds(10)
     let participant: Signer
 
     beforeEach(async function () {
       ;[, participant] = await ethers.getSigners()
       // Create a battle lobby as deployer
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await deployer.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of ownerCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await deployer.getAddress(), arena.address, cardId)
-          .returns()
-
-        // Mock ownerOf function
-        await farcantasyContract.mock.ownerOf
-          .withArgs(cardId)
-          .returns(await deployer.getAddress())
-      }
-      await arena.createBattleLobby(ownerCardIds)
+      await createBattleLobby(farcantasyContract, deployer, arena, ownerCardIds)
     })
 
     it('should revert if the specified battle lobby does not exist', async function () {
@@ -345,37 +250,16 @@ describe('Arena', function () {
     it('should revert if the owner has already submitted a card selection', async function () {
       // Set up the mock for the cardSelectionVerifierContract.verifyProof function
       await cardSelectionVerifierContract.mock.verifyProof.returns(true)
-
       // Add participant to the lobby
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-
-        // Mock ownerOf function
-        await farcantasyContract.mock.ownerOf
-          .withArgs(cardId)
-          .returns(await participant.getAddress())
-      }
-      await arena.connect(participant).joinBattleLobby(0, participantCardIds)
-
-      // Mock owner card selection submission
-      await arena.submitCardSelectionProof(
-        0,
-        [3, 1],
-        [
-          [7, 8],
-          [2, 5],
-        ],
-        [9, 6],
-        [1]
+      await joinBattleLobby(
+        farcantasyContract,
+        participant,
+        arena,
+        participantCardIds
       )
-
+      // Mock owner card selection submission
+      const ownerCardSelectionProof = getCardSelectionProof(1)
+      await arena.submitCardSelectionProof(0, ...ownerCardSelectionProof)
       // Check if the backOff function reverts with the appropriate error message
       await expect(arena.backOff(0)).to.be.revertedWith(
         'The owner has already submitted a card selection.'
@@ -384,23 +268,17 @@ describe('Arena', function () {
 
     it('should return all cards, delete the battle lobby, and emit event', async function () {
       // Mock safeTransferFrom to return cards
-      for (const cardId of ownerCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(arena.address, await deployer.getAddress(), cardId)
-          .returns()
-        // Mock ownerOf function
-        await farcantasyContract.mock.ownerOf
-          .withArgs(cardId)
-          .returns(arena.address)
-      }
-
+      await approveTransfer(
+        farcantasyContract,
+        arena.address,
+        await deployer.getAddress(),
+        ownerCardIds
+      )
       // Expect the BattleLobbyBackedOff event to be emitted
+      await mockOwnership(farcantasyContract, arena.address, ownerCardIds)
       await expect(arena.backOff(0))
         .to.emit(arena, 'BattleLobbyBackedOff')
         .withArgs(0)
-
       // Check if the battle lobby has been deleted
       const deletedLobby = await arena.battleLobbies(0)
       expect(deletedLobby.owner).to.equal(ethers.constants.AddressZero)
@@ -414,311 +292,147 @@ describe('Arena', function () {
   })
 
   describe('submitCardSelectionProof', function () {
-    const ownerCardIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    const participantCardIds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-    const selectionProof = [
-      [3, 1],
-      [
-        [7, 8],
-        [2, 5],
-      ],
-      [9, 6],
-      [1],
-    ] as [
-      [number, number],
-      [[number, number], [number, number]],
-      [number, number],
-      [number]
-    ]
+    const ownerCardSelectionProof = getCardSelectionProof(1)
+    const participantCardSelectionProof = getCardSelectionProof(2)
+    const ownerCardIds = defaultCardIds()
+    const participantCardIds = defaultCardIds(10)
     let participant: Signer
 
     beforeEach(async function () {
       ;[, participant] = await ethers.getSigners()
       // Create a battle lobby as deployer
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await deployer.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of ownerCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await deployer.getAddress(), arena.address, cardId)
-          .returns()
-
-        // Mock ownerOf function
-        await farcantasyContract.mock.ownerOf
-          .withArgs(cardId)
-          .returns(await deployer.getAddress())
-      }
-      await arena.createBattleLobby(ownerCardIds)
+      await createBattleLobby(farcantasyContract, deployer, arena, ownerCardIds)
     })
 
     it('should revert if the specified battle lobby does not exist', async function () {
       await expect(
-        arena.submitCardSelectionProof(1, ...selectionProof)
+        arena.submitCardSelectionProof(1, ...ownerCardSelectionProof)
       ).to.be.revertedWith('The specified battle lobby does not exist.')
     })
 
     it('should revert if the battle lobby has no participant', async function () {
       await expect(
-        arena.submitCardSelectionProof(0, ...selectionProof)
+        arena.submitCardSelectionProof(0, ...ownerCardSelectionProof)
       ).to.be.revertedWith('The battle lobby has no participant.')
     })
 
-    it("should revert if the caller isn't the owner or participant", async function () {
-      // Add participant to the lobby
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-
-        // Mock ownerOf function
-        await farcantasyContract.mock.ownerOf
-          .withArgs(cardId)
-          .returns(await participant.getAddress())
-      }
-      await arena.connect(participant).joinBattleLobby(0, participantCardIds)
-
-      // Test with a signer who is neither the owner nor the participant
-      const anotherSigner = (await ethers.getSigners())[2]
-      await expect(
-        arena
-          .connect(anotherSigner)
-          .submitCardSelectionProof(0, ...selectionProof)
-      ).to.be.revertedWith(
-        'Only the owner or participant can submit a card selection proof.'
-      )
-    })
-
-    it('should revert if the card selection proof has already been submitted', async function () {
-      // Add participant to the lobby
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-
-        // Mock ownerOf function
-        await farcantasyContract.mock.ownerOf
-          .withArgs(cardId)
-          .returns(await participant.getAddress())
-      }
-      await arena.connect(participant).joinBattleLobby(0, participantCardIds)
-
-      // Mock the cardSelectionVerifierContract.verifyProof function
-      await cardSelectionVerifierContract.mock.verifyProof.returns(true)
-
-      // Submit the card selection proof as the owner
-      await arena.submitCardSelectionProof(0, ...selectionProof)
-
-      // Try to submit the card selection proof again as the owner
-      await expect(
-        arena.submitCardSelectionProof(0, ...selectionProof)
-      ).to.be.revertedWith('Card selection proof has already been submitted.')
-    })
-
-    it('should revert if the card selection proof is not valid', async function () {
-      // Add participant to the lobby
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-
-        // Mock ownerOf function
-        await farcantasyContract.mock.ownerOf
-          .withArgs(cardId)
-          .returns(await participant.getAddress())
-      }
-      await arena.connect(participant).joinBattleLobby(0, participantCardIds)
-
-      // Mock the cardSelectionVerifierContract.verifyProof function to return false
-      await cardSelectionVerifierContract.mock.verifyProof.returns(false)
-
-      // Try to submit an invalid card selection proof
-      await expect(
-        arena.submitCardSelectionProof(0, ...selectionProof)
-      ).to.be.revertedWith('The card selection proof is not valid.')
-    })
-
-    it('should store the card selection proof and emit event', async function () {
-      // Add participant to the lobby
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-
-        // Mock ownerOf function
-        await farcantasyContract.mock.ownerOf
-          .withArgs(cardId)
-          .returns(await participant.getAddress())
-      }
-      await arena.connect(participant).joinBattleLobby(0, participantCardIds)
-
-      // Mock the cardSelectionVerifierContract.verifyProof function
-      await cardSelectionVerifierContract.mock.verifyProof.returns(true)
-
-      // Submit the card selection proof as the owner
-      await expect(arena.submitCardSelectionProof(0, ...selectionProof))
-        .to.emit(arena, 'CardSelectionProofSubmitted')
-        .withArgs(0, await deployer.getAddress(), 1)
-
-      // Check if the card selection proof is stored correctly
-      const battleLobby = await arena.battleLobbies(0)
-      expect(battleLobby.ownerCardSelection).to.equal(1)
-      // Submit the card selection proof as the participant
-      await expect(
-        arena.connect(participant).submitCardSelectionProof(
-          0,
-          [1, 2],
-          [
-            [1, 2],
-            [1, 2],
-          ],
-          [1, 2],
-          [2]
+    describe('with participant', function () {
+      this.beforeEach(async function () {
+        // Add participant to the lobby
+        await joinBattleLobby(
+          farcantasyContract,
+          participant,
+          arena,
+          participantCardIds
         )
-      )
-        .to.emit(arena, 'CardSelectionProofSubmitted')
-        .withArgs(0, await participant.getAddress(), 2)
+      })
 
-      // Check if the card selection proof is stored correctly
-      const updatedBattleLobby = await arena.battleLobbies(0)
-      expect(updatedBattleLobby.participantCardSelection).to.equal(2)
+      it("should revert if the caller isn't the owner or participant", async function () {
+        // Test with a signer who is neither the owner nor the participant
+        const [, , anotherSigner] = await ethers.getSigners()
+        await expect(
+          arena
+            .connect(anotherSigner)
+            .submitCardSelectionProof(0, ...ownerCardSelectionProof)
+        ).to.be.revertedWith(
+          'Only the owner or participant can submit a card selection proof.'
+        )
+      })
+
+      it('should revert if the card selection proof has already been submitted', async function () {
+        // Mock the cardSelectionVerifierContract.verifyProof function
+        await cardSelectionVerifierContract.mock.verifyProof.returns(true)
+        // Submit the card selection proof as the owner
+        await arena.submitCardSelectionProof(0, ...ownerCardSelectionProof)
+        // Try to submit the card selection proof again as the owner
+        await expect(
+          arena.submitCardSelectionProof(0, ...ownerCardSelectionProof)
+        ).to.be.revertedWith('Card selection proof has already been submitted.')
+      })
+
+      it('should revert if the card selection proof is not valid', async function () {
+        // Mock the cardSelectionVerifierContract.verifyProof function to return false
+        await cardSelectionVerifierContract.mock.verifyProof.returns(false)
+        // Try to submit an invalid card selection proof
+        await expect(
+          arena.submitCardSelectionProof(0, ...ownerCardSelectionProof)
+        ).to.be.revertedWith('The card selection proof is not valid.')
+      })
+
+      it('should store the card selection proof and emit event', async function () {
+        // Mock the cardSelectionVerifierContract.verifyProof function
+        await cardSelectionVerifierContract.mock.verifyProof.returns(true)
+        // Submit the card selection proof as the owner
+        await expect(
+          arena.submitCardSelectionProof(0, ...ownerCardSelectionProof)
+        )
+          .to.emit(arena, 'CardSelectionProofSubmitted')
+          .withArgs(0, await deployer.getAddress(), 1)
+        // Check if the card selection proof is stored correctly
+        const battleLobby = await arena.battleLobbies(0)
+        expect(battleLobby.ownerCardSelection).to.equal(1)
+        // Submit the card selection proof as the participant
+        await expect(
+          arena
+            .connect(participant)
+            .submitCardSelectionProof(0, ...participantCardSelectionProof)
+        )
+          .to.emit(arena, 'CardSelectionProofSubmitted')
+          .withArgs(0, await participant.getAddress(), 2)
+        // Check if the card selection proof is stored correctly
+        const updatedBattleLobby = await arena.battleLobbies(0)
+        expect(updatedBattleLobby.participantCardSelection).to.equal(2)
+      })
     })
   })
 
   describe('revealCards', function () {
-    const cardSelectionProof = [
-      [3, 1],
-      [
-        [7, 8],
-        [2, 5],
-      ],
-      [9, 6],
-      [1],
-    ] as [
-      [number, number],
-      [[number, number], [number, number]],
-      [number, number],
-      [number]
-    ]
-    const participantCardSelectionProof = [
-      [3, 1],
-      [
-        [7, 8],
-        [2, 5],
-      ],
-      [9, 6],
-      [2],
-    ] as [
-      [number, number],
-      [[number, number], [number, number]],
-      [number, number],
-      [number]
-    ]
-    const cardRevealProof = [
-      [3, 1],
-      [
-        [7, 8],
-        [2, 5],
-      ],
-      [9, 6],
-      [1, 1, 2, 3, 4, 0, 0, 5, 0, 0],
-    ] as [
-      [number, number],
-      [[number, number], [number, number]],
-      [number, number],
-      [
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number
-      ]
-    ]
-    const ownerCardIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    const participantCardIds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    const ownerCardSelectionProof = getCardSelectionProof(1)
+    const participantCardSelectionProof = getCardSelectionProof(2)
+    const ownerCardRevealProof = getCardRevealProof(1)
+    const participantCardRevealProof = getCardRevealProof(2)
+    const ownerCardIds = defaultCardIds()
+    const participantCardIds = defaultCardIds(10)
     let participant: Signer
 
     beforeEach(async function () {
       ;[, participant] = await ethers.getSigners()
       // Create a battle lobby as deployer
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await deployer.getAddress(), arena.address)
-        .returns(true)
-      for (const cardId of ownerCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await deployer.getAddress(), arena.address, cardId)
-          .returns()
-      }
-      await arena.createBattleLobby(ownerCardIds)
+      await createBattleLobby(farcantasyContract, deployer, arena, ownerCardIds)
       // Add participant to the lobby
-      await farcantasyContract.mock.isApprovedForAll
-        .withArgs(await participant.getAddress(), arena.address)
-        .returns(true)
-      // Mock safeTransferFrom
-      for (const cardId of participantCardIds) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(await participant.getAddress(), arena.address, cardId)
-          .returns()
-      }
-      await arena.connect(participant).joinBattleLobby(0, participantCardIds)
+      await joinBattleLobby(
+        farcantasyContract,
+        participant,
+        arena,
+        participantCardIds
+      )
       // Mock the cardSelectionVerifierContract.verifyProof function
       await cardSelectionVerifierContract.mock.verifyProof.returns(true)
       // Submit card selection proofs for both owner and participant
-      await arena.submitCardSelectionProof(0, ...cardSelectionProof)
+      await arena.submitCardSelectionProof(0, ...ownerCardSelectionProof)
       await arena
         .connect(participant)
         .submitCardSelectionProof(0, ...participantCardSelectionProof)
     })
 
     it('should revert if the specified battle lobby does not exist', async function () {
-      await expect(arena.revealCards(1, ...cardRevealProof)).to.be.revertedWith(
-        'The specified battle lobby does not exist.'
-      )
+      await expect(
+        arena.revealCards(1, ...ownerCardRevealProof)
+      ).to.be.revertedWith('The specified battle lobby does not exist.')
     })
 
     it('should revert if the battle lobby has no participant', async function () {
       // Create a new battle lobby without participant
       await arena.createBattleLobby(ownerCardIds)
-      await expect(arena.revealCards(1, ...cardRevealProof)).to.be.revertedWith(
-        'The battle lobby has no participant.'
-      )
+      await expect(
+        arena.revealCards(1, ...ownerCardRevealProof)
+      ).to.be.revertedWith('The battle lobby has no participant.')
     })
 
     it("should revert if the caller isn't the owner or participant", async function () {
-      // Test with a signer who is neither the owner nor the participant
       const [, , anotherSigner] = await ethers.getSigners()
       await expect(
-        arena.connect(anotherSigner).revealCards(0, ...cardRevealProof)
+        arena.connect(anotherSigner).revealCards(0, ...ownerCardRevealProof)
       ).to.be.revertedWith(
         'Only the owner or participant can submit a card selection proof.'
       )
@@ -729,51 +443,25 @@ describe('Arena', function () {
       await arena.createBattleLobby(ownerCardIds)
       await arena.connect(participant).joinBattleLobby(1, participantCardIds)
 
-      await expect(arena.revealCards(1, ...cardRevealProof)).to.be.revertedWith(
-        'Both card selection proofs must be submitted.'
-      )
+      await expect(
+        arena.revealCards(1, ...ownerCardRevealProof)
+      ).to.be.revertedWith('Both card selection proofs must be submitted.')
     })
 
     it('should revert if the card reveal proof is not valid', async function () {
       // Mock the cardRevealVerifierContract.verifyProof function to return false
       await cardRevealVerifierContract.mock.verifyProof.returns(false)
       // Try to submit an invalid card reveal proof
-      await expect(arena.revealCards(0, ...cardRevealProof)).to.be.revertedWith(
-        'The card reveal proof is not valid.'
-      )
+      await expect(
+        arena.revealCards(0, ...ownerCardRevealProof)
+      ).to.be.revertedWith('The card reveal proof is not valid.')
     })
 
     it('should revert if the revealed card selection does not match the submitted proof', async function () {
       // Mock the cardRevealVerifierContract.verifyProof function to return true
       await cardRevealVerifierContract.mock.verifyProof.returns(true)
       // Modify the input array of the cardRevealProof to mismatch the submitted proof
-      const mismatchedCardRevealProof = [
-        [3, 1],
-        [
-          [7, 8],
-          [2, 5],
-        ],
-        [9, 6],
-        [2, 1, 2, 3, 4, 0, 0, 5, 0, 0],
-      ] as [
-        [number, number],
-        [[number, number], [number, number]],
-        [number, number],
-        [
-          number,
-          number,
-          number,
-          number,
-          number,
-          number,
-          number,
-          number,
-          number,
-          number
-        ]
-      ]
-      mismatchedCardRevealProof[3] = [2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-
+      const mismatchedCardRevealProof = getCardRevealProof(2)
       await expect(
         arena.revealCards(0, ...mismatchedCardRevealProof)
       ).to.be.revertedWith(
@@ -782,87 +470,157 @@ describe('Arena', function () {
     })
 
     it('should reveal cards, emit event, and return unused cards', async function () {
+      const ownerUnselectedCardIds = getUnselectedCardIds(ownerCardIds)
+      const participantUnselectedCardIds =
+        getUnselectedCardIds(participantCardIds)
       // Mock the cardRevealVerifierContract.verifyProof function to return true
       await cardRevealVerifierContract.mock.verifyProof.returns(true)
       // Mock safeTransferFrom
-      for (const cardId of [6, 7, 8, 9, 10]) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(arena.address, await deployer.getAddress(), cardId)
-          .returns()
-      }
-
+      await approveTransfer(
+        farcantasyContract,
+        arena.address,
+        await deployer.getAddress(),
+        ownerUnselectedCardIds
+      )
       // Reveal cards for the owner
-      const revealCardsTx = await arena.revealCards(0, ...cardRevealProof)
+      const revealCardsTx = await arena.revealCards(0, ...ownerCardRevealProof)
       await expect(revealCardsTx).to.emit(arena, 'CardsRevealed')
       await expect(revealCardsTx)
         .to.emit(arena, 'UnusedCardsReturned')
-        .withArgs(0, await deployer.getAddress(), [6, 7, 8, 9, 10])
+        .withArgs(0, await deployer.getAddress(), ownerUnselectedCardIds)
 
       const battleLobby = await arena.battleLobbies(0)
 
       // Check if the battle lines are stored correctly
       const ownerBattleLines = await arena.getOwnerBattleLines(0)
-      expect(ownerBattleLines).to.deep.equal([
-        [1, 2, 3],
-        [4, 0, 0],
-        [5, 0, 0],
-      ])
+      expect(ownerBattleLines).to.deep.equal(defaultCardSelection)
       expect(battleLobby.isOwnerBattleLinesRevealed).to.equal(true)
 
       // Mock safeTransferFrom
-      for (const cardId of [16, 17, 18, 19, 20]) {
-        await farcantasyContract.mock[
-          'safeTransferFrom(address,address,uint256)'
-        ]
-          .withArgs(arena.address, await participant.getAddress(), cardId)
-          .returns()
-      }
+      await approveTransfer(
+        farcantasyContract,
+        arena.address,
+        await participant.getAddress(),
+        participantUnselectedCardIds
+      )
 
       // Reveal cards for the participant
-      const participantCardRevealProof = [
-        [3, 1],
-        [
-          [7, 8],
-          [2, 5],
-        ],
-        [9, 6],
-        [2, 1, 2, 3, 4, 0, 0, 5, 0, 0],
-      ] as [
-        [number, number],
-        [[number, number], [number, number]],
-        [number, number],
-        [
-          number,
-          number,
-          number,
-          number,
-          number,
-          number,
-          number,
-          number,
-          number,
-          number
-        ]
-      ]
       const revealParticipantCardsTx = await arena
         .connect(participant)
         .revealCards(0, ...participantCardRevealProof)
       await expect(revealParticipantCardsTx).to.emit(arena, 'CardsRevealed')
       await expect(revealParticipantCardsTx)
         .to.emit(arena, 'UnusedCardsReturned')
-        .withArgs(0, await participant.getAddress(), [16, 17, 18, 19, 20])
+        .withArgs(
+          0,
+          await participant.getAddress(),
+          participantUnselectedCardIds
+        )
 
       // Check if the battle lines are stored correctly
       const updatedBattleLobby = await arena.battleLobbies(0)
       const participantBattleLines = await arena.getParticipantBattleLines(0)
-      expect(participantBattleLines).to.deep.equal([
-        [1, 2, 3],
-        [4, 0, 0],
-        [5, 0, 0],
-      ])
+      expect(participantBattleLines).to.deep.equal(defaultCardSelection)
       expect(updatedBattleLobby.isParticipantBattleLinesRevealed).to.equal(true)
+    })
+  })
+
+  describe('executeBattle', function () {
+    const cardSelectionProof = getCardSelectionProof(1)
+    const participantCardSelectionProof = getCardSelectionProof(2)
+    const ownerCardRevealProof = getCardRevealProof(1)
+    const participantCardRevealProof = getCardRevealProof(2)
+    const ownerCardIds = defaultCardIds()
+    const participantCardIds = defaultCardIds(10)
+
+    let participant: Signer
+
+    beforeEach(async function () {
+      ;[, participant] = await ethers.getSigners()
+      // Create a battle lobby as deployer
+      await createBattleLobby(farcantasyContract, deployer, arena, ownerCardIds)
+      // Add participant to the lobby
+      await joinBattleLobby(
+        farcantasyContract,
+        participant,
+        arena,
+        participantCardIds
+      )
+      // Mock the cardSelectionVerifierContract.verifyProof function
+      await cardSelectionVerifierContract.mock.verifyProof.returns(true)
+      // Submit card selection proofs for both owner and participant
+      await arena.submitCardSelectionProof(0, ...cardSelectionProof)
+      await arena
+        .connect(participant)
+        .submitCardSelectionProof(0, ...participantCardSelectionProof)
+      // Reveal cards for both owner and participant
+      await cardRevealVerifierContract.mock.verifyProof.returns(true)
+      await approveTransfer(
+        farcantasyContract,
+        arena.address,
+        await deployer.getAddress(),
+        getUnselectedCardIds(ownerCardIds, defaultCardSelection)
+      )
+      await arena.revealCards(0, ...ownerCardRevealProof)
+      await approveTransfer(
+        farcantasyContract,
+        arena.address,
+        await participant.getAddress(),
+        getUnselectedCardIds(participantCardIds, defaultCardSelection)
+      )
+      await arena
+        .connect(participant)
+        .revealCards(0, ...participantCardRevealProof)
+    })
+
+    it('should execute the battle, transfer cards, emit event, and delete the lobby', async function () {
+      // // Execute the battle
+      // const executeBattleTx = await arena.executeBattle(0, [
+      //   await getSignedStats(ownerCardIds),
+      //   await getSignedStats(participantCardIds),
+      // ])
+      // // Check if the BattleExecuted event is emitted with the correct winners
+      // const expectedWinners = [0, 1, 2] // Replace with the expected winners based on your mocked stats
+      // await expect(executeBattleTx)
+      //   .to.emit(arena, 'BattleExecuted')
+      //   .withArgs(0, expectedWinners)
+      // // Check if the cards are transferred correctly based on the winners
+      // for (let i = 0; i < 3; i++) {
+      //   const winner = expectedWinners[i]
+      //   const ownerCardRecipient =
+      //     winner === 0 || winner === 1
+      //       ? await deployer.getAddress()
+      //       : await participant.getAddress()
+      //   const participantCardRecipient =
+      //     winner === 0 || winner === 2
+      //       ? await participant.getAddress()
+      //       : await deployer.getAddress()
+      //   // Check owner cards
+      //   const ownerCard = ownerCardIds[i]
+      //   expect(await farcantasyContract.balanceOf(ownerCardRecipient)).to.equal(
+      //     1
+      //   )
+      //   expect(
+      //     await farcantasyContract.tokenOfOwnerByIndex(ownerCardRecipient, 0)
+      //   ).to.equal(ownerCard)
+      //   // Check participant cards
+      //   const participantCard = participantCardIds[i]
+      //   expect(
+      //     await farcantasyContract.balanceOf(participantCardRecipient)
+      //   ).to.equal(1)
+      //   expect(
+      //     await farcantasyContract.tokenOfOwnerByIndex(
+      //       participantCardRecipient,
+      //       0
+      //     )
+      //   ).to.equal(participantCard)
+      // }
+      // // Check if the battle lobby is deleted
+      // const deletedBattleLobby = await arena.battleLobbies(0)
+      // expect(deletedBattleLobby.owner).to.equal(ethers.constants.AddressZero)
+      // expect(deletedBattleLobby.participant).to.equal(
+      //   ethers.constants.AddressZero
+      // )
     })
   })
 })

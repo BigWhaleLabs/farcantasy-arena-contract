@@ -336,7 +336,6 @@ contract Arena is Ownable {
       cardRevealVerifierContract.verifyProof(a, b, c, input),
       "The card reveal proof is not valid."
     );
-
     uint256 submittedCardSelection = isOwner
       ? lobby.ownerCardSelection
       : lobby.participantCardSelection;
