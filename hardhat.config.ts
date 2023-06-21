@@ -6,6 +6,7 @@ import 'solidity-coverage'
 import * as dotenv from 'dotenv'
 import { HardhatUserConfig } from 'hardhat/config'
 import { cleanEnv, str, testOnly } from 'envalid'
+import { ethers } from 'ethers'
 
 dotenv.config()
 
