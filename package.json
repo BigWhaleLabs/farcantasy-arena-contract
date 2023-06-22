@@ -29,7 +29,7 @@
     "lint": "prettier --check . && eslint --max-warnings 0 --ext ts scripts test && yarn eth-lint",
     "prettify": "prettier --write .",
     "release": "np",
-    "prepublishOnly": "yarn build && yarn tsc",
+    "prepublishOnly": "yarn build && yarn tsc --skipLibCheck",
     "generate-inputs": "ts-node scripts/generate-inputs.ts",
     "compile": "yarn compile-selection && yarn compile-reveal",
     "compile-selection": "scripts/compile-circuit.sh CardSelection card-selection 12",
